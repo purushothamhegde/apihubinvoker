@@ -69,6 +69,18 @@ public class SayHelloSpeechlet implements Speechlet
             return getGetContactResponse(intent);
         } 
         
+        else if ("GetOpportunityIntent".equals(intentName)) {
+            return getGetOpportunityResponse(intent);
+        } 
+        
+        else if ("AMAZON.StopIntent".equals(intentName)) {
+            return getStopResponse();
+        } 
+        
+
+        else if ("AMAZON.CancelIntent".equals(intentName)) {
+            return getStopResponse();
+        } 
         
         
         else if ("AMAZON.HelpIntent".equals(intentName)) {
@@ -80,6 +92,11 @@ public class SayHelloSpeechlet implements Speechlet
         }
     }
  
+    
+    
+    
+    
+    
     /**
      * Creates and returns a {@code SpeechletResponse} with a welcome message.
      *
@@ -87,8 +104,10 @@ public class SayHelloSpeechlet implements Speechlet
      */
     private SpeechletResponse getWelcomeResponse()
     {
-    	 String speechText = "<speak><s>Welcome to the API Hub</s> <s>you can ask me to execute Master Data Management , Data Integration Hub or Power Center Jobs<s>You can also ask me to fetch contact details of a person</s></speak>";
-    	 
+    	 //String speechText = "<speak><s>Welcome to the API Hub</s> <s>you can ask me to execute Master Data Management , Data Integration Hub or Power Center Jobs<s>You can also ask me to fetch contact details of a person</s></speak>";
+    	//String speechText = "Welcome to the API Hub you can ask me to execute Master Data Management , Data Integration Hub or Power Center Jobs You can also ask me to fetch contact details of a person";
+    	
+    	String speechText = "Welcome to the API Hub. You can ask me to fetch Opportunities open for a Company, or even contact details of a person ";
     	
  
         // Create the Simple card content.
@@ -100,8 +119,11 @@ public class SayHelloSpeechlet implements Speechlet
         // Create the plain text output.
  
  
-        SsmlOutputSpeech speech = new SsmlOutputSpeech();
-        speech.setSsml(speechText);
+        PlainTextOutputSpeech speech = new PlainTextOutputSpeech();
+        speech.setText(speechText);
+        
+        //SsmlOutputSpeech speech = new SsmlOutputSpeech();
+        //speech.setSsml(speechText);
  
         
         // Create reprompt
@@ -115,6 +137,115 @@ public class SayHelloSpeechlet implements Speechlet
 
     
     
+    private SpeechletResponse getGetOpportunityResponse(Intent intent) 
+    {
+        String speechText = "" ;
+ 
+        // Create the Simple card content.
+ 
+        SimpleCard card = new SimpleCard();
+        card.setTitle("API Hub");
+        card.setContent(speechText);
+        
+        // Let us put the content into S3 Bucket first
+        
+        Map<String, Slot> myslots =intent.getSlots();
+        String sOut ="";
+        String sCompanyName="";
+        
+        for (Map.Entry<String, Slot> entry : myslots.entrySet()) 
+        {
+        	System.out.println("Key : " + entry.getKey() + " Value : " + entry.getValue());
+        	Slot tempslot =entry.getValue();
+        	
+        	if (tempslot.getName().equals("CompanyName")){
+        		sCompanyName=tempslot.getValue() ;
+        	}
+        	
+   	    	}
+
+    	sOut ="SFDC" +",OPPORTUNITY," + sCompanyName;
+    	
+    	
+       BasicAWSCredentials basicCred = new BasicAWSCredentials("XXXXX", "YYYYY"); 
+		
+		AmazonS3 s3 = new AmazonS3Client(basicCred);
+		
+       
+       
+       StringBuilder stringBuilder = new StringBuilder();
+
+       //Writing in file
+       stringBuilder.append(sOut);
+
+       // Upload file
+       ByteArrayInputStream inputStream = null;
+       
+       inputStream = new ByteArrayInputStream(stringBuilder.toString().getBytes());
+       
+       
+       String bucketName = "com.philips.purush";
+		String in_folderName="alexa_inbox";
+		String out_folderName="alexa_outbox";
+		String SUFFIX="/";
+		String  uploadFileName=new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()) + "_req.txt";
+		s3.putObject(bucketName, in_folderName+ SUFFIX +uploadFileName, inputStream, new ObjectMetadata());
+		
+ 
+		try {
+			Thread.sleep(9000);
+		} catch (InterruptedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		// Now let us wait to get a response in the outbox
+		
+		
+		ListObjectsRequest param = new ListObjectsRequest() ;
+		param.setBucketName(bucketName);
+		param.setPrefix(out_folderName);
+		
+		String sFileName =uploadFileName.replace("_req.txt", "_resp.txt");
+	  	String filecontent="";		
+		
+	  	System.out.println("Looking for the following file::" + sFileName);
+		
+		ObjectListing lst = s3.listObjects(param);
+		
+		for ( S3ObjectSummary summ : lst.getObjectSummaries()) {
+		  
+		  if (summ.getKey().contains(sFileName)){
+			  GetObjectRequest param2 = new GetObjectRequest(bucketName, out_folderName+ SUFFIX  + sFileName);
+			  S3Object fullObject= s3.getObject(param2);
+			  BufferedReader reader = new BufferedReader(new InputStreamReader(fullObject.getObjectContent()));
+				  	String line = null;
+				  	try {
+						while ((line = reader.readLine()) != null) 
+						{
+							filecontent=filecontent+ line;
+						}
+					} catch (IOException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+				  	System.out.println(filecontent);
+				  	DeleteObjectRequest param3 = new DeleteObjectRequest(bucketName, out_folderName+ SUFFIX  + sFileName);
+					s3.deleteObject(param3);
+			}
+		}
+// Create the plain text output.
+ 
+		
+		SsmlOutputSpeech speech = new SsmlOutputSpeech();
+        speech.setSsml(filecontent);
+        
+        // Create reprompt
+        Reprompt reprompt = new Reprompt();
+        reprompt.setOutputSpeech(speech);
+        
+        return SpeechletResponse.newAskResponse(speech, reprompt, card);
+    }
+
     
     
     private SpeechletResponse getGetContactResponse(Intent intent) 
@@ -144,10 +275,10 @@ public class SayHelloSpeechlet implements Speechlet
         	
    	    	}
 
-    	sOut ="SFDC" +"," + sContactName;
+    	sOut ="SFDC" +",CONTACT," + sContactName;
     	
     	
-       BasicAWSCredentials basicCred = new BasicAWSCredentials("AKIAI3PG366X5PWM4RZA", "PVi2oKO9IYzzCtazT2S3C/AQRjMeTwOMpKuMc62l"); 
+       BasicAWSCredentials basicCred = new BasicAWSCredentials("XXXXXX", "YYYYYY"); 
 		
 		AmazonS3 s3 = new AmazonS3Client(basicCred);
 		
@@ -173,7 +304,7 @@ public class SayHelloSpeechlet implements Speechlet
 		
  
 		try {
-			Thread.sleep(10000);
+			Thread.sleep(9000);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -269,7 +400,7 @@ public class SayHelloSpeechlet implements Speechlet
     	sOut =sJobType +"," + sJobName +"," + sEnv;
     	
     	
-       BasicAWSCredentials basicCred = new BasicAWSCredentials("AKIAI3PG366X5PWM4RZA", "PVi2oKO9IYzzCtazT2S3C/AQRjMeTwOMpKuMc62l"); 
+       BasicAWSCredentials basicCred = new BasicAWSCredentials("XXXXXXX", "YYYYYY"); 
 		
 		AmazonS3 s3 = new AmazonS3Client(basicCred);
 		
@@ -295,7 +426,7 @@ public class SayHelloSpeechlet implements Speechlet
 		
  
 		try {
-			Thread.sleep(10000);
+			Thread.sleep(15000);
 		} catch (InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -337,7 +468,7 @@ public class SayHelloSpeechlet implements Speechlet
 		}
 // Create the plain text output.
  
-        
+        System.out.println(filecontent);
         SsmlOutputSpeech speech = new SsmlOutputSpeech();
         speech.setSsml(filecontent);
         
@@ -358,8 +489,8 @@ public class SayHelloSpeechlet implements Speechlet
      */
     private SpeechletResponse getHelloResponse()
     {
-        String speechText = "<speak><s>Welcome to the API Hub</s> <s>you can ask me to execute Master Data Management , Data Integration Hub or Power Center Jobs<s>You can also ask me to fetch contact details of a person</s></speak>";
- 
+ //       String speechText = "<speak><s>Welcome to the API Hub</s> <s>you can ask me to execute Master Data Management , Data Integration Hub or Power Center Jobs<s>You can also ask me to fetch contact details of a person</s></speak>";
+    	String speechText = "Welcome to the API Hub you can ask me to execute Master Data Management , Data Integration Hub or Power Center Jobs You can also ask me to fetch contact details of a person";
         // Create the Simple card content.
  
         SimpleCard card = new SimpleCard();
@@ -369,13 +500,49 @@ public class SayHelloSpeechlet implements Speechlet
         // Create the plain text output.
  
  
-        SsmlOutputSpeech speech = new SsmlOutputSpeech();
-        speech.setSsml(speechText);
+//        SsmlOutputSpeech speech = new SsmlOutputSpeech();
+//       speech.setSsml(speechText);
+        
+
+		PlainTextOutputSpeech speech = new PlainTextOutputSpeech();
+		speech.setText(speechText);
  
         
         return SpeechletResponse.newTellResponse(speech, card);
     }
  
+    
+    
+ 
+    /**
+     * Creates a {@code SpeechletResponse} for the help intent.
+     *
+     * @return SpeechletResponse spoken and visual response for the given intent
+     */
+    private SpeechletResponse getStopResponse()
+    {
+        String speechText = "Thank you for using our Service, Hope to see you soon";
+ 
+        // Create the Simple card content.
+ 
+        SimpleCard card = new SimpleCard();
+        card.setTitle("APIHub");
+        card.setContent(speechText);
+ 
+        // Create the plain text output.
+ 
+        PlainTextOutputSpeech speech = new PlainTextOutputSpeech();
+        speech.setText(speechText);
+ 
+        // Create reprompt
+ 
+        Reprompt reprompt = new Reprompt();
+        reprompt.setOutputSpeech(speech);
+ 
+        return SpeechletResponse.newAskResponse(speech, reprompt, card);
+    }
+ 
+    
     /**
      * Creates a {@code SpeechletResponse} for the help intent.
      *
@@ -383,7 +550,7 @@ public class SayHelloSpeechlet implements Speechlet
      */
     private SpeechletResponse getHelpResponse()
     {
-        String speechText = "you can ask me to execute Master Data Management , Data Integration Hub or even Power Center Jobs";
+        String speechText = "You can ask me to execute Master Data Management , Data Integration Hub or even Power Center Jobs";
  
         // Create the Simple card content.
  
